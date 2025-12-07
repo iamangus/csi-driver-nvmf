@@ -77,7 +77,7 @@ func (n *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublish
 	connector := getNvmfConnector(nvmfInfo)
 	devicePath, err := connector.Connect()
 
-	connectorFilePath := path.Join(DefaultVolumeMapPath, req.GetVolumeId()+".json")
+	connectorFilePath := path.Join(n.Driver.volumeMapDir, req.GetVolumeId()+".json")
 
 	if err != nil {
 		klog.Errorf("VolumeID %s failed to connect, Error: %v", req.VolumeId, err)
@@ -91,6 +91,12 @@ func (n *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublish
 	defer Rollback(err, func() {
 		connector.Disconnect()
 	})
+
+	// Ensure the directory exists
+	if err := os.MkdirAll(n.Driver.volumeMapDir, 0750); err != nil {
+		klog.Errorf("failed to create volume map dir: %v", err)
+		return nil, status.Errorf(codes.Internal, "failed to create volume map dir: %v", err)
+	}
 
 	err = persistConnectorFile(connector, connectorFilePath)
 	if err != nil {
@@ -134,7 +140,7 @@ func (n *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpub
 	}
 
 	// Disconnect remote disk
-	connectorFilePath := path.Join(DefaultVolumeMapPath, req.GetVolumeId()+".json")
+	connectorFilePath := path.Join(n.Driver.volumeMapDir, req.GetVolumeId()+".json")
 	connector, err := GetConnectorFromFile(connectorFilePath)
 	if err != nil {
 		klog.Errorf("failed to get connector from path %s Error: %v", targetPath, err)
