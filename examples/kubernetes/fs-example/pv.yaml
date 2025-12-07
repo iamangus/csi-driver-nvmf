@@ -30,3 +30,7 @@ spec:
       #deviceEUI: "00000000000000000042aa42aa42aa42"
       # is the same as
       #deviceID: "eui.00000000000000000042aa42aa42aa42"
+      #
+      # If you don't know the deviceID (e.g. random UUIDs), you can omit deviceID
+      # and specify namespaceID (defaults to "1"). The driver will discover the device by NQN.
+      #namespaceID: "1"

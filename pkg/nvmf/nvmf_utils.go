@@ -46,6 +46,56 @@ func waitForPathToExist(devicePath string, maxRetries, intervalSeconds int, devi
 	return false, fmt.Errorf("not found devicePath %s and transport %s", devicePath, deviceTransport)
 }
 
+func waitForDeviceByNQN(targetNqn, namespaceID string, maxRetries, intervalSeconds int, deviceTransport string) (string, error) {
+	for i := 0; i < maxRetries; i++ {
+		devicePath, err := GetDeviceNameByNQN(targetNqn, namespaceID)
+		if err == nil && devicePath != "" {
+			return devicePath, nil
+		}
+		if i == maxRetries-1 {
+			break
+		}
+		time.Sleep(time.Second * time.Duration(intervalSeconds))
+	}
+	return "", fmt.Errorf("not found device for nqn %s namespace %s and transport %s", targetNqn, namespaceID, deviceTransport)
+}
+
+func GetDeviceNameByNQN(targetNqn, namespaceID string) (string, error) {
+	devices, err := os.ReadDir(SYS_NVMF)
+	if err != nil {
+		klog.Errorf("GetDeviceNameByNQN: readdir %s err: %s", SYS_NVMF, err)
+		return "", err
+	}
+
+	for _, device := range devices {
+		// Check if this controller matches the NQN
+		subsysnqnPath := filepath.Join(SYS_NVMF, device.Name(), "subsysnqn")
+		content, err := os.ReadFile(subsysnqnPath)
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(string(content)) == targetNqn {
+			// Found the controller, now look for the namespace device
+			// The device name is typically nvmeXnY where X is controller index and Y is namespaceID
+			// But we can also look for block devices under the controller directory
+			// e.g. /sys/class/nvme/nvme0/nvme0n1
+			
+			// Construct expected device name
+			// device.Name() is like "nvme0"
+			// namespaceID is like "1"
+			// expected: "nvme0n1"
+			expectedDeviceName := fmt.Sprintf("%sn%s", device.Name(), namespaceID)
+			devicePath := filepath.Join("/dev", expectedDeviceName)
+
+			if utils.IsFileExisting(devicePath) {
+				klog.Infof("Found device %s for NQN %s", devicePath, targetNqn)
+				return devicePath, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("device not found for NQN %s", targetNqn)
+}
+
 func GetDeviceNameByVolumeID(volumeID string) (deviceName string, err error) {
 	volumeLinkPath := strings.Join([]string{"/dev/disk/by-id/nvme-uuid", volumeID}, ".")
 	stat, err := os.Lstat(volumeLinkPath)

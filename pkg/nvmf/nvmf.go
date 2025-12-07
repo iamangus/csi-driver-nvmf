@@ -29,14 +29,15 @@ import (
 )
 
 type nvmfDiskInfo struct {
-	VolName   string
-	Nqn       string
-	Addr      string
-	Port      string
-	DeviceID  string
-	Transport string
-	HostId    string
-	HostNqn   string
+	VolName     string
+	Nqn         string
+	Addr        string
+	Port        string
+	DeviceID    string
+	Transport   string
+	HostId      string
+	HostNqn     string
+	NamespaceID string
 }
 
 func getNVMfDiskInfo(req *csi.NodePublishVolumeRequest) (*nvmfDiskInfo, error) {
@@ -49,6 +50,11 @@ func getNVMfDiskInfo(req *csi.NodePublishVolumeRequest) (*nvmfDiskInfo, error) {
 	devHostNqn := volOpts["hostNqn"]
 	devHostId := volOpts["hostId"]
 	deviceID := volOpts["deviceID"]
+	namespaceID := volOpts["namespaceID"]
+	if namespaceID == "" {
+		namespaceID = "1"
+	}
+
 	if volOpts["deviceUUID"] != "" {
 		if deviceID != "" {
 			klog.Warningf("Warning: deviceUUID is overwriting already defined deviceID, volID: %s ", volName)
@@ -63,19 +69,20 @@ func getNVMfDiskInfo(req *csi.NodePublishVolumeRequest) (*nvmfDiskInfo, error) {
 	}
 	nqn := volOpts["nqn"]
 
-	if targetTrAddr == "" || nqn == "" || targetTrPort == "" || targetTrType == "" || deviceID == "" {
+	if targetTrAddr == "" || nqn == "" || targetTrPort == "" || targetTrType == "" {
 		return nil, fmt.Errorf("some nvme target info is missing, volID: %s ", volName)
 	}
 
 	return &nvmfDiskInfo{
-		VolName:   volName,
-		Addr:      targetTrAddr,
-		Port:      targetTrPort,
-		Nqn:       nqn,
-		DeviceID:  deviceID,
-		Transport: targetTrType,
-		HostNqn:   devHostNqn,
-		HostId:    devHostId,
+		VolName:     volName,
+		Addr:        targetTrAddr,
+		Port:        targetTrPort,
+		Nqn:         nqn,
+		DeviceID:    deviceID,
+		Transport:   targetTrType,
+		HostNqn:     devHostNqn,
+		HostId:      devHostId,
+		NamespaceID: namespaceID,
 	}, nil
 }
 
