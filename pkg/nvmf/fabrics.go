@@ -39,6 +39,7 @@ type Connector struct {
 	HostId        string
 	RetryCount    int32
 	CheckInterval int32
+	NamespaceID   string
 }
 
 func getNvmfConnector(nvmfInfo *nvmfDiskInfo) *Connector {
@@ -65,14 +66,15 @@ func getNvmfConnector(nvmfInfo *nvmfDiskInfo) *Connector {
 	}
 
 	return &Connector{
-		VolumeID:   nvmfInfo.VolName,
-		DeviceID:   nvmfInfo.DeviceID,
-		TargetNqn:  nvmfInfo.Nqn,
-		TargetAddr: nvmfInfo.Addr,
-		TargetPort: nvmfInfo.Port,
-		Transport:  nvmfInfo.Transport,
-		HostNqn:    hostnqn,
-		HostId:     hostid,
+		VolumeID:    nvmfInfo.VolName,
+		DeviceID:    nvmfInfo.DeviceID,
+		TargetNqn:   nvmfInfo.Nqn,
+		TargetAddr:  nvmfInfo.Addr,
+		TargetPort:  nvmfInfo.Port,
+		Transport:   nvmfInfo.Transport,
+		HostNqn:     hostnqn,
+		HostId:      hostid,
+		NamespaceID: nvmfInfo.NamespaceID,
 	}
 }
 
@@ -278,7 +280,10 @@ func (c *Connector) Connect() (string, error) {
 	}
 	baseString := builder.String()
 
-	devicePath := strings.Join([]string{"/dev/disk/by-id/nvme-", c.DeviceID}, "")
+	devicePath := ""
+	if c.DeviceID != "" {
+		devicePath = strings.Join([]string{"/dev/disk/by-id/nvme-", c.DeviceID}, "")
+	}
 
 	// connect to nvmf disk
 	err := _connect(baseString)
@@ -287,13 +292,28 @@ func (c *Connector) Connect() (string, error) {
 	}
 	klog.Infof("Connect Volume %s success nqn: %s, hostnqn: %s", c.VolumeID, c.TargetNqn, c.HostNqn)
 	retries := int(c.RetryCount / c.CheckInterval)
-	if exists, err := waitForPathToExist(devicePath, retries, int(c.CheckInterval), c.Transport); !exists {
-		klog.Errorf("connect nqn %s error %v, rollback!!!", c.TargetNqn, err)
-		ret := disconnectByNqn(c.TargetNqn, c.HostNqn)
-		if ret < 0 {
-			klog.Errorf("rollback error !!!")
+
+	if c.DeviceID != "" {
+		if exists, err := waitForPathToExist(devicePath, retries, int(c.CheckInterval), c.Transport); !exists {
+			klog.Errorf("connect nqn %s error %v, rollback!!!", c.TargetNqn, err)
+			ret := disconnectByNqn(c.TargetNqn, c.HostNqn)
+			if ret < 0 {
+				klog.Errorf("rollback error !!!")
+			}
+			return "", err
 		}
-		return "", err
+	} else {
+		// If DeviceID is not provided, try to find the device by NQN and NamespaceID
+		var err error
+		devicePath, err = waitForDeviceByNQN(c.TargetNqn, c.NamespaceID, retries, int(c.CheckInterval), c.Transport)
+		if err != nil {
+			klog.Errorf("connect nqn %s error %v, rollback!!!", c.TargetNqn, err)
+			ret := disconnectByNqn(c.TargetNqn, c.HostNqn)
+			if ret < 0 {
+				klog.Errorf("rollback error !!!")
+			}
+			return "", err
+		}
 	}
 
 	// create nqn directory
